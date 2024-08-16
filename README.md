@@ -1,4 +1,4 @@
-# Proyecto_Intrumentacion
+# Proyecto BioControl 360: Inteligencia Artificial y Automatización para la Agricultura y Entornos Sostenibles
 Alumnos: Mario Yahir García Hernández, Oscar Correa Saenz, Victor Hugo Mejía Trejo
 
 **Descripción del Proyecto: EcoAI - Sistema Inteligente de Gestión Automatizada para Invernaderos y Entornos Controlados**
