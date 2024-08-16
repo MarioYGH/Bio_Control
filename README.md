@@ -1,5 +1,5 @@
 # Proyecto_Intrumentacion
-Alumnos: Mario Yahir García Hernández, Hannia Isela Dominguéz Nuñéz, Ander Villalobos Gilling
+Alumnos: Mario Yahir García Hernández, Oscar Correa Saenz, Victor Hugo Mejía Trejo
 
 Descripción del Proyecto: Sistema de Control Automatizado para Invernadero
 
