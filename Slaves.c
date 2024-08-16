@@ -32,6 +32,8 @@
 #define BDC_MCPWM_GPIO_B 15
 #define BDC_MCPWM_GPIO_C 4
 #define BDC_MCPWM_GPIO_D 13
+#define BDC_MCPWM_GPIO_E 5
+#define BDC_MCPWM_GPIO_F 18
 #define SERVO_MIN_PULSEWIDTH_US 500
 #define SERVO_MAX_PULSEWIDTH_US 2400
 #define SERVO_MIN_DEGREE 0
@@ -46,7 +48,7 @@ uint8_t sensor_data[SENSOR_DATA_SIZE]; // Ajusta el tamaño según sea necesario
 int position_flag = 0; // Variable para determinar la posición del servo
 
 static const char *TAG = "Main";
-static uint8_t peer_mac[ESP_NOW_ETH_ALEN] = {0x08, 0xd1, 0xf9, 0xe7, 0x9f, 0xd8};
+static uint8_t peer_mac[ESP_NOW_ETH_ALEN] = {0xc8, 0xf0, 0x9e, 0xec, 0x0d, 0x18};
 //08:d1:f9:e7:9f:d8 servo en shield
 //c8:f0:9e:ec:0d:18 servo 1 
 
@@ -56,6 +58,7 @@ static float voltage;
 
 bdc_motor_handle_t motor = NULL;
 bdc_motor_handle_t motor1 = NULL;
+bdc_motor_handle_t motor2 = NULL;
 mcpwm_timer_handle_t timer = NULL;
 mcpwm_oper_handle_t oper = NULL;
 mcpwm_cmpr_handle_t comparator = NULL;
@@ -184,24 +187,23 @@ void sensor_task(void *pvParameter) {
         if (ret != ESP_OK) {
             printf("Failed to get ADC value: %s\n", esp_err_to_name(ret));
         } else {
-            //printf("Raw data: %d\n", adc_raw);
             voltage = ((adc_raw * 5.0) / 4095.0);
-            //printf("Voltage: %2.2f V\n", voltage);
+            // Formatear los datos del ADC y del sensor en un solo buffer
+            snprintf((char *)sensor_data, SENSOR_DATA_SIZE, "Temperature: %.2f, Humidity: %.2f, Voltage: %.2f", Sample.TempCelsius, Sample.HumidityPercent, voltage);
+
+            // Enviar los datos por ESP-NOW
+            ESP_ERROR_CHECK(esp_now_send_data(peer_mac, sensor_data, strlen((char *)sensor_data)));
         }
 
         SHT1x_ReadSample(&Handler, &Sample);
-        // Formatear los datos del sensor
-        snprintf((char *)sensor_data, SENSOR_DATA_SIZE, "Temperature: %.2f°C, Humidity: %.2f%%, Luminosity: %.2fV", Sample.TempCelsius, Sample.HumidityPercent, voltage);
-
-        // Enviar los datos del sensor por ESP-NOW
-        ESP_ERROR_CHECK(esp_now_send_data(peer_mac, sensor_data, strlen((char *)sensor_data)));
-
+        
         // Envío de datos por ESP-NOW
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
     SHT1x_DeInit(&Handler);
 }
+
 
 esp_err_t init_motor() {
     ESP_LOGI(TAG, "Create BOMBA");
@@ -216,6 +218,12 @@ esp_err_t init_motor() {
         .pwma_gpio_num = BDC_MCPWM_GPIO_C,
         .pwmb_gpio_num = BDC_MCPWM_GPIO_D,
     };
+    ESP_LOGI(TAG, "Create Ventilador");
+    bdc_motor_config_t motor_L_config = {
+        .pwm_freq_hz = BDC_MCPWM_FREQ_HZ,
+        .pwma_gpio_num = BDC_MCPWM_GPIO_E,
+        .pwmb_gpio_num = BDC_MCPWM_GPIO_F,
+    };
     bdc_motor_mcpwm_config_t mcpwm_1_config = {
         .group_id = 0,
         .resolution_hz = BDC_MCPWM_TIMER_RESOLUTION_HZ,
@@ -224,13 +232,19 @@ esp_err_t init_motor() {
         .group_id = 1,
         .resolution_hz = BDC_MCPWM_TIMER_RESOLUTION_HZ,
     };
+    bdc_motor_mcpwm_config_t mcpwm_3_config = {
+        .group_id = 1,
+        .resolution_hz = BDC_MCPWM_TIMER_RESOLUTION_HZ,
+    };
 
     ESP_ERROR_CHECK(bdc_motor_new_mcpwm_device(&motor_I_config, &mcpwm_1_config, &motor)); //Bomba
     ESP_ERROR_CHECK(bdc_motor_new_mcpwm_device(&motor_D_config, &mcpwm_2_config, &motor1));//Ventilador
+    ESP_ERROR_CHECK(bdc_motor_new_mcpwm_device(&motor_L_config, &mcpwm_3_config, &motor2));//Ventilador
 
     ESP_LOGI(TAG, "Enable");
     ESP_ERROR_CHECK(bdc_motor_enable(motor));
     ESP_ERROR_CHECK(bdc_motor_enable(motor1));
+    ESP_ERROR_CHECK(bdc_motor_enable(motor2));
 
     return ESP_OK;
 }
@@ -322,31 +336,36 @@ static inline uint32_t angle_to_compare(int angle) {
     return (angle - SERVO_MIN_DEGREE) * (SERVO_MAX_PULSEWIDTH_US - SERVO_MIN_PULSEWIDTH_US) / (SERVO_MAX_DEGREE - SERVO_MIN_DEGREE) + SERVO_MIN_PULSEWIDTH_US;
 }
 
+
 void T2() { //bajar temperatura
     ESP_LOGI(TAG, "Executing T2");
-    bdc_motor_set_speed(motor,300);
-    bdc_motor_set_speed(motor1,400);
+    bdc_motor_set_speed(motor, 300);
+    bdc_motor_set_speed(motor1, 100);
+    bdc_motor_set_speed(motor2, 100);
     update_servo_angle(90);
     ESP_ERROR_CHECK(bdc_motor_coast(motor));
     ESP_ERROR_CHECK(bdc_motor_forward(motor1));
-    
+    ESP_ERROR_CHECK(bdc_motor_forward(motor2));
 }
 
 void T3() { //subir T y H
     ESP_LOGI(TAG, "Executing T3");
-    bdc_motor_set_speed(motor,300);
-    bdc_motor_set_speed(motor1,300);
-    update_servo_angle(120);
+    bdc_motor_set_speed(motor, 200);
+    bdc_motor_set_speed(motor1, 300);
+    bdc_motor_set_speed(motor2, 200);
+    update_servo_angle(180);
     ESP_ERROR_CHECK(bdc_motor_forward(motor));
     ESP_ERROR_CHECK(bdc_motor_coast(motor1));
-    
+    ESP_ERROR_CHECK(bdc_motor_forward(motor2));
 }
 
 void T1() { //
     ESP_LOGI(TAG, "Executing T1");
-    bdc_motor_set_speed(motor,150);
-    bdc_motor_set_speed(motor1,150);
+    bdc_motor_set_speed(motor, 300);
+    bdc_motor_set_speed(motor1, 150);
+    bdc_motor_set_speed(motor2, 50);
     update_servo_angle(30);
     ESP_ERROR_CHECK(bdc_motor_forward(motor));
     ESP_ERROR_CHECK(bdc_motor_forward(motor1));
+    ESP_ERROR_CHECK(bdc_motor_coast(motor2));
 }
